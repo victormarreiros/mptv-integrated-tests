@@ -1,0 +1,480 @@
+---
+description: Boas praticas para automacao de testes de API com Java, Maven, Cucumber, Rest Assured e Gherkin em portugues
+globs:
+  - "pom.xml"
+  - "src/test/java/**/*.java"
+  - "src/test/resources/features/**/*.feature"
+  - "src/test/resources/schemas/**/*.json"
+alwaysApply: false
+---
+
+# Automacao de testes de API com Java, Cucumber e Rest Assured
+
+Use esta rule ao criar, revisar ou modificar projetos de automacao de testes de API que utilizem:
+
+- Java com Maven.
+- Cucumber JVM com JUnit.
+- Rest Assured para chamadas HTTP.
+- Gherkin em portugues.
+- Gson ou biblioteca equivalente para serializacao e desserializacao JSON.
+- JSON Schema Validator para validacao de contratos.
+- Lombok para reduzir boilerplate em modelos de dados, quando ja adotado pelo projeto.
+
+Esta rule e generica e pode ser aplicada em outros projetos que sigam a mesma stack, mesmo que os nomes de dominio, endpoints e entidades sejam diferentes.
+
+## Principios gerais
+
+- Escreva testes orientados a comportamento, com cenarios compreensiveis por pessoas tecnicas e nao tecnicas.
+- Mantenha as features declarativas. O arquivo `.feature` deve dizer o comportamento esperado, nao detalhes internos de implementacao.
+- Separe responsabilidades por camada:
+  - `features`: comportamento em Gherkin.
+  - `steps`: traducao entre Gherkin e codigo.
+  - `services`: chamadas HTTP, montagem de payload, validacao tecnica e estado da requisicao.
+  - `model`: objetos que representam payloads e respostas.
+  - `schemas`: contratos JSON esperados.
+  - `runner`: configuracao de execucao do Cucumber.
+  - `hook`: preparacao e limpeza de ambiente ou dados.
+- Prefira codigo simples, explicito e previsivel a abstracoes genericas demais.
+- Evite duplicar logica de requisicao HTTP nos steps. Steps devem delegar para services.
+- Evite depender da ordem de execucao dos cenarios. Cada cenario deve preparar seus proprios dados.
+- Sempre que possivel, use nomes alinhados ao dominio da API testada.
+
+## Estrutura recomendada
+
+```text
+src/test/java/
+  hook/
+    Hook.java
+  model/
+    EntidadeModel.java
+    ErrorMessageModel.java
+  runner/
+    TestRunner.java
+  services/
+    EntidadeService.java
+  steps/
+    EntidadeSteps.java
+
+src/test/resources/
+  features/
+    Entidade.feature
+  schemas/
+    contrato-da-resposta.json
+```
+
+Use nomes no singular para models e services quando representarem uma entidade especifica. Use nomes de features orientados ao fluxo de negocio, por exemplo `CadastroEntregas.feature`, `ConsultaUsuario.feature` ou `CancelamentoPedido.feature`.
+
+## Dependencias e configuracao Maven
+
+Para esta stack, o `pom.xml` deve conter, no minimo, dependencias equivalentes a:
+
+- `cucumber-java`
+- `cucumber-junit`
+- `rest-assured`
+- `gson` ou serializador JSON equivalente
+- `json-schema-validator`
+- `junit`
+- `lombok`, quando o projeto usa anotacoes como `@Data`
+
+O `maven-surefire-plugin` deve executar o runner de testes, normalmente por include semelhante a:
+
+```xml
+<includes>
+    <include>**/TestRunner.java</include>
+</includes>
+```
+
+Evite adicionar dependencias novas sem necessidade clara. Antes de incluir uma biblioteca, verifique se a stack atual ja resolve o problema.
+
+## Runner do Cucumber
+
+O runner deve centralizar a configuracao de execucao:
+
+```java
+@RunWith(Cucumber.class)
+@CucumberOptions(
+        features = "src/test/resources/features",
+        glue = {"steps", "hook"},
+        tags = "@regressivo",
+        plugin = {"html:target/cucumber-reports.html"}
+)
+public class TestRunner {
+}
+```
+
+Boas praticas:
+
+- Configure `features` apontando para `src/test/resources/features`.
+- Configure `glue` apenas com os pacotes necessarios, como `steps` e `hook`.
+- Use tags para controlar suites, por exemplo `@regressivo`, `@smoke`, `@contrato`, `@critico`.
+- Gere relatorios em `target/`, evitando arquivos de execucao versionados.
+- Evite alterar o runner para executar um unico cenario de forma permanente. Use tags ou comandos Maven para execucoes pontuais.
+
+## Hooks
+
+Use hooks para preparacao e limpeza que valem para todos os cenarios ou para cada cenario individual:
+
+- `@BeforeAll`: configuracao global antes da suite.
+- `@AfterAll`: limpeza global apos a suite.
+- `@Before`: preparacao antes de cada cenario.
+- `@After`: limpeza apos cada cenario.
+
+Boas praticas:
+
+- Nao coloque regras de negocio nos hooks.
+- Nao esconda pre-condicoes importantes nos hooks quando elas forem relevantes para entender o comportamento. Nesse caso, explicite no Gherkin.
+- Use hooks para setup tecnico, limpeza de dados, configuracao de ambiente e logs de execucao.
+- Evite hooks que tornam os cenarios dependentes de estado global.
+
+## Gherkin em portugues
+
+Todo arquivo `.feature` deve iniciar com:
+
+```gherkin
+# language: pt
+```
+
+Use a seguinte estrutura:
+
+```gherkin
+# language: pt
+@regressivo
+Funcionalidade: Cadastro de nova entrega
+  Como usuario da API
+  Quero cadastrar uma nova entrega
+  Para que o registro seja salvo corretamente no sistema
+
+  Cenario: Cadastro bem-sucedido de entrega
+    Dado que eu tenha os seguintes dados da entrega:
+      | campo          | valor        |
+      | numeroPedido   | 1            |
+      | nomeEntregador | Ana Silva    |
+      | statusEntrega  | EM_SEPARACAO |
+      | dataEntrega    | 2024-08-22   |
+    Quando eu enviar a requisicao para o endpoint "/entregas" de cadastro de entregas
+    Entao o status code da resposta deve ser 201
+```
+
+Regras de escrita:
+
+- Use `Funcionalidade`, `Contexto`, `Cenario`, `Dado`, `Quando`, `Entao` e `E` em portugues.
+- Mantenha um comportamento por cenario.
+- Nomeie cenarios pelo resultado esperado, nao pela implementacao.
+- Prefira frases no idioma do negocio.
+- Evite passos genericos demais, como `Quando eu executo a API`.
+- Evite passos acoplados a detalhes de biblioteca, como Rest Assured, Gson ou classes Java.
+- Use `Contexto` apenas para pre-condicoes comuns a todos os cenarios da feature.
+- Use tags por finalidade:
+  - `@regressivo` para testes de regressao.
+  - `@smoke` para validacoes essenciais e rapidas.
+  - `@contrato` para validacoes de schema.
+  - `@negativo` para fluxos de erro.
+  - `@critico` para fluxos de alto impacto.
+
+## Estrategia de dados
+
+A estrategia padrao de dados de teste deve ser Data Tables no Gherkin.
+
+Use Data Tables quando o cenario precisa montar um payload ou informar campos de entrada:
+
+```gherkin
+Dado que eu tenha os seguintes dados da entrega:
+  | campo          | valor        |
+  | numeroPedido   | 1            |
+  | nomeEntregador | Ana Silva    |
+  | statusEntrega  | EM_SEPARACAO |
+  | dataEntrega    | 2024-08-22   |
+```
+
+Boas praticas:
+
+- Use as colunas `campo` e `valor` para payloads simples.
+- Os nomes em `campo` devem corresponder aos atributos do model ou ao contrato da API.
+- Os valores devem ser explicitos e legiveis.
+- Evite dados magicos sem significado para o dominio.
+- Evite massa de teste escondida em arquivos externos quando a entrada for pequena e essencial para entender o cenario.
+- Use schemas JSON apenas para contrato de resposta, nao como massa principal de entrada.
+- Quando um campo for numerico, booleano ou data, converta no service de forma explicita.
+
+Exemplo de conversao no service:
+
+```java
+public void setFieldsDelivery(String field, String value) {
+    switch (field) {
+        case "numeroPedido" -> entregaModel.setNumeroPedido(Integer.parseInt(value));
+        case "nomeEntregador" -> entregaModel.setNomeEntregador(value);
+        case "statusEntrega" -> entregaModel.setStatusEntrega(value);
+        case "dataEntrega" -> entregaModel.setDataEntrega(value);
+        default -> throw new IllegalStateException("Campo inesperado: " + field);
+    }
+}
+```
+
+## Steps
+
+Steps devem ser finos e expressar apenas a ponte entre Gherkin e service.
+
+Padrao recomendado:
+
+```java
+public class CadastroEntregasSteps {
+
+    private final CadastroEntregasService cadastroEntregasService = new CadastroEntregasService();
+
+    @Dado("que eu tenha os seguintes dados da entrega:")
+    public void queEuTenhaOsSeguintesDadosDaEntrega(List<Map<String, String>> rows) {
+        for (Map<String, String> columns : rows) {
+            cadastroEntregasService.setFieldsDelivery(columns.get("campo"), columns.get("valor"));
+        }
+    }
+
+    @Quando("eu enviar a requisicao para o endpoint {string} de cadastro de entregas")
+    public void euEnviarARequisicaoParaOEndpointDeCadastroDeEntregas(String endpoint) {
+        cadastroEntregasService.createDelivery(endpoint);
+    }
+
+    @Entao("o status code da resposta deve ser {int}")
+    public void oStatusCodeDaRespostaDeveSer(int statusCode) {
+        Assert.assertEquals(statusCode, cadastroEntregasService.getStatusCode());
+    }
+}
+```
+
+Boas praticas:
+
+- Use anotacoes em portugues: `@Dado`, `@Quando`, `@Entao`, `@E`.
+- Nao coloque chamadas Rest Assured diretamente nos steps.
+- Nao monte JSON manualmente nos steps.
+- Nao valide muitos detalhes tecnicos em um unico step quando isso prejudicar a clareza.
+- Reaproveite steps apenas quando a frase continuar clara no dominio.
+- Evite criar steps extremamente genericos que aceitam qualquer operacao, endpoint ou payload sem contexto.
+
+## Services
+
+Services devem concentrar:
+
+- URL base e endpoint.
+- Montagem de payload.
+- Execucao de requisicoes HTTP.
+- Armazenamento da ultima resposta.
+- Desserializacao de respostas.
+- Validacao de contrato.
+- Recuperacao de dados criados durante o fluxo, como IDs.
+
+Padrao recomendado:
+
+```java
+public class CadastroEntregasService {
+
+    private final EntregaModel entregaModel = new EntregaModel();
+    private final Gson gson = new GsonBuilder()
+            .excludeFieldsWithoutExposeAnnotation()
+            .create();
+
+    private Response response;
+    private String idDelivery;
+
+    public void createDelivery(String endpoint) {
+        response = given()
+                .contentType(ContentType.JSON)
+                .accept(ContentType.JSON)
+                .body(gson.toJson(entregaModel))
+                .when()
+                .post(baseUrl() + endpoint)
+                .then()
+                .extract()
+                .response();
+    }
+
+    public int getStatusCode() {
+        return response.statusCode();
+    }
+}
+```
+
+Boas praticas:
+
+- Prefira `private` para atributos internos e exponha metodos especificos para leitura.
+- Evite acessar `response` diretamente fora do service quando existir alternativa clara.
+- Configure `contentType(ContentType.JSON)` em requisicoes com body.
+- Configure `accept(ContentType.JSON)` quando a API retorna JSON.
+- Nao duplique a montagem da URL em varios lugares.
+- Idealmente, obtenha `baseUrl` por variavel de ambiente, propriedade Maven ou arquivo de configuracao nao sensivel.
+- Nao versionar segredos, tokens ou credenciais.
+- Nomeie metodos por acao de negocio, como `createDelivery`, `deleteDelivery`, `retrieveIdDelivery`.
+- Em mensagens de erro internas, inclua contexto suficiente para facilitar manutencao.
+
+## Models
+
+Models devem representar payloads ou respostas da API.
+
+Padrao recomendado com Lombok e Gson:
+
+```java
+@Data
+public class EntregaModel {
+    @Expose(serialize = false)
+    private int numeroEntrega;
+
+    @Expose
+    private int numeroPedido;
+
+    @Expose
+    private String nomeEntregador;
+
+    @Expose
+    private String statusEntrega;
+
+    @Expose
+    private String dataEntrega;
+}
+```
+
+Boas praticas:
+
+- Use `@Data` quando Lombok ja for padrao do projeto.
+- Use `@Expose` para controlar quais campos entram no payload.
+- Marque campos retornados pela API, mas nao enviados no cadastro, com `@Expose(serialize = false)`.
+- Evite models gigantes que misturam entidades diferentes.
+- Prefira tipos coerentes com o contrato, por exemplo `int` para numeros e `String` para datas quando a API trabalha com texto ISO.
+
+## Validacao de status, mensagem e contrato
+
+Valide sempre o status code esperado:
+
+```gherkin
+Entao o status code da resposta deve ser 201
+```
+
+Para fluxos de erro, valide tambem a mensagem principal retornada pela API:
+
+```gherkin
+E o corpo de resposta de erro da api deve retornar a mensagem "Dados fornecidos estao em formato invalido."
+```
+
+Para contrato, use schemas JSON em `src/test/resources/schemas`:
+
+```gherkin
+E que o arquivo de contrato esperado e o "Cadastro bem-sucedido de entrega"
+Entao a resposta da requisicao deve estar em conformidade com o contrato selecionado
+```
+
+Boas praticas:
+
+- Use validacao de contrato em cenarios marcados com `@contrato` ou em fluxos criticos.
+- Mantenha o schema focado na estrutura esperada da resposta.
+- Inclua campos obrigatorios em `required`.
+- Defina tipos coerentes com a API.
+- Evite schemas permissivos demais quando o objetivo for proteger o contrato.
+- Ao falhar uma validacao de contrato, apresente os erros retornados pelo validator.
+
+## Padrao para cenarios positivos, negativos e contexto
+
+Cenario positivo:
+
+```gherkin
+Cenario: Cadastro bem-sucedido de entrega
+  Dado que eu tenha os seguintes dados da entrega:
+    | campo          | valor        |
+    | numeroPedido   | 1            |
+    | nomeEntregador | Ana Silva    |
+    | statusEntrega  | EM_SEPARACAO |
+    | dataEntrega    | 2024-08-22   |
+  Quando eu enviar a requisicao para o endpoint "/entregas" de cadastro de entregas
+  Entao o status code da resposta deve ser 201
+```
+
+Cenario negativo:
+
+```gherkin
+@negativo
+Cenario: Cadastro de entrega sem sucesso ao informar status invalido
+  Dado que eu tenha os seguintes dados da entrega:
+    | campo          | valor      |
+    | numeroPedido   | 1          |
+    | nomeEntregador | Ana Silva  |
+    | statusEntrega  | EM_ROTA    |
+    | dataEntrega    | 2024-08-22 |
+  Quando eu enviar a requisicao para o endpoint "/entregas" de cadastro de entregas
+  Entao o status code da resposta deve ser 400
+  E o corpo de resposta de erro da api deve retornar a mensagem "Dados fornecidos estao em formato invalido."
+```
+
+Cenario com contexto:
+
+```gherkin
+Contexto: Cadastro bem-sucedido de entrega
+  Dado que eu tenha os seguintes dados da entrega:
+    | campo          | valor        |
+    | numeroPedido   | 1            |
+    | nomeEntregador | Ana Silva    |
+    | statusEntrega  | EM_SEPARACAO |
+    | dataEntrega    | 2024-08-22   |
+  Quando eu enviar a requisicao para o endpoint "/entregas" de cadastro de entregas
+  Entao o status code da resposta deve ser 201
+
+Cenario: Deve ser possivel deletar uma entrega
+  Dado que eu recupere o ID da entrega criada no contexto
+  Quando eu enviar a requisicao com o ID para o endpoint "/entregas" de delecao de entrega
+  Entao o status code da resposta deve ser 204
+```
+
+## Convencoes de nomenclatura
+
+- Features: `CadastroEntregas.feature`, `ConsultaEntregas.feature`, `DelecaoEntregas.feature`.
+- Steps: `CadastroEntregasSteps.java`.
+- Services: `CadastroEntregasService.java`.
+- Models: `EntregaModel.java`, `ErrorMessageModel.java`.
+- Schemas: nomes em kebab-case, por exemplo `cadastro-bem-sucedido-de-entrega.json`.
+- Metodos Java: camelCase e nomes orientados a acao.
+- Campos de Data Table: use o mesmo nome do contrato da API.
+
+## Criterios de qualidade antes de finalizar alteracoes
+
+Antes de concluir uma mudanca, verifique:
+
+- O Gherkin esta em portugues e com `# language: pt`.
+- O cenario descreve comportamento observavel da API.
+- Os dados de entrada estao em Data Tables.
+- Os steps nao contem logica de HTTP, serializacao ou regra tecnica complexa.
+- O service concentra chamadas Rest Assured e manipulacao da resposta.
+- Os models refletem o contrato da API.
+- Schemas JSON foram adicionados ou atualizados quando houver validacao de contrato.
+- Tags foram aplicadas conforme a finalidade do teste.
+- O runner continua apontando para os diretorios corretos.
+- A suite pode ser executada via Maven.
+
+## Comandos uteis
+
+Executar a suite configurada no runner:
+
+```bash
+mvn test
+```
+
+Executar por tag:
+
+```bash
+mvn test -Dcucumber.filter.tags="@regressivo"
+```
+
+Gerar relatorio Cucumber:
+
+```text
+target/cucumber-reports.html
+```
+
+## Anti-padroes
+
+Evite:
+
+- Requisicoes HTTP diretamente nos arquivos de steps.
+- Payload JSON montado como string dentro do step.
+- Cenarios que dependem de execucao previa de outros cenarios.
+- Dados essenciais escondidos fora do Gherkin sem necessidade.
+- Steps excessivamente genericos que prejudicam legibilidade.
+- Validacoes vagas, como apenas verificar que a resposta "nao esta vazia".
+- Base URL, credenciais ou tokens sensiveis hardcoded.
+- Schemas JSON permissivos demais para campos criticos.
+- Misturar validacao de contrato, regra de negocio e limpeza de dados em um unico metodo grande.
+- Adicionar dependencias novas sem avaliar se a stack atual ja atende.
