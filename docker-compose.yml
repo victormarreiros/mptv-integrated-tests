@@ -1,0 +1,19 @@
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["mvn", "clean", "test"]
+    env_file:
+      - .env
+    environment:
+      BASE_URL: "${BASE_URL:-}"
+      CITIZEN_ID: "${CITIZEN_ID:-}"
+      SLUG: "${SLUG:-}"
+      COLLECTION_POINT_ID: "${COLLECTION_POINT_ID:-}"
+      ADDRESS: "${ADDRESS:-}"
+      LAT: "${LAT:-}"
+      LNG: "${LNG:-}"
+      MAX_DISTANCE_METERS: "${MAX_DISTANCE_METERS:-}"
+    volumes:
+      - .:/workspace/mptv-integrated-tests
